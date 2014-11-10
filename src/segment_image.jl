@@ -1,12 +1,5 @@
-include("UnionFind.jl")
-
-module ImgSeg
-
-using Hoge
-
 using Images, Color
-
-export segment
+include("union_find.jl")
 
 type Edge
     u::Int64
@@ -22,17 +15,16 @@ function get_dist(x1::Int64, y1::Int64, c1::RGB, x2::Int64, y2::Int64, c2::RGB)
     (x1-x2)^2 + (y1-y2)^2 + ((c1.r-c2.r)*255)^2 + ((c1.g-c2.g)*255)^2 + ((c1.b-c2.b)*255)^2
 end
 
-function segment(img::Image)
-    cnt = 0
+function get_edges(img::Image, W=2)
     width = size(img, 1)
     height = size(img, 2)
     edges = Edge[]
-    window = 2
+
     for x = 1:width, y = 1:height
         u = (y-1)*width+x
-        for w = 0:window
+        for w = 0:W
             if x+w > width continue end
-            for h = 0:window-w
+            for h = 0:W-w
                 if w==0 && h==0 continue end
                 if y+h > height continue end
                 v = (y+h-1)*width+x+w
@@ -40,28 +32,36 @@ function segment(img::Image)
                 push!(edges, Edge(u, v, d^(0.5)))
             end
         end
-        cnt += 1
     end
-    K = 500.0
-    sort!(edges, by= e -> e.weight)
-    threshold = fill(K, width*height)
+    edges
+end
 
+function segment(img::Image, K::Float64=500.0, MIN_SIZE::Int64=50, W::Int64=2)
+    width = size(img, 1)
+    height = size(img, 2)
+
+    # enumerate and sort edges
+    edges = get_edges(img, W)
+    sort!(edges, by= e -> e.weight)
+
+    # merge similar region
     unionFind = UnionFind(width*height)
+    threshold = fill(1.0*K, width*height)
     for e = edges
         u = get_root(unionFind, e.u)
         v = get_root(unionFind, e.v)
         if u != v && e.weight <= min(threshold[u], threshold[v])
             union!(unionFind,u,v)
             r = get_root(unionFind, u)
-            threshold[r] = e.weight + K/get_size(unionFind, r)
+            threshold[r] = e.weight + 1.0*K/get_size(unionFind, r)
         end
     end
+
     # merge small region
-    min_size = 50
     for e = edges
         u = get_root(unionFind, e.u)
         v = get_root(unionFind, e.v)
-        if u != v && min(get_size(unionFind, u), get_size(unionFind, v)) < min_size
+        if u != v && min(get_size(unionFind, u), get_size(unionFind, v)) < MIN_SIZE
             union!(unionFind,u,v)
         end
     end
@@ -77,7 +77,6 @@ function segment(img::Image)
         r = get_root(unionFind, u)
         res[x,y] = colors[r]
     end
-    return res
-end
 
+    res
 end
